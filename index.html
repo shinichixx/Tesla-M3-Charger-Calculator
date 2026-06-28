@@ -191,13 +191,13 @@
 <div class="app-container">
     <header>
         <h1>Tesla M3 RWD LR<br><span>Charger Calculator</span></h1>
-        <div class="specs-badge">79 kWh • 90% Efficiency</div>
+        <div class="specs-badge">85.33 kWh • 90% Efficiency • EVKX Curve</div>
     </header>
 
     <div class="form-group">
         <label for="currentSoc">Current Battery Level</label>
         <div class="input-wrapper">
-            <input type="number" id="currentSoc" min="0" max="100" value="20" placeholder="e.g. 20">
+            <input type="number" id="currentSoc" min="0" max="100" value="10" placeholder="e.g. 10">
             <span class="input-unit">%</span>
         </div>
     </div>
@@ -213,7 +213,7 @@
     <div class="form-group">
         <label for="chargeSpeed">Max Charger Speed</label>
         <div class="input-wrapper">
-            <input type="number" id="chargeSpeed" min="1" max="250" value="100" placeholder="e.g. 100">
+            <input type="number" id="chargeSpeed" min="1" max="500" value="250" placeholder="e.g. 250">
             <span class="input-unit">kW</span>
         </div>
     </div>
@@ -249,8 +249,27 @@
 </div>
 
 <script>
-    const BATTERY_CAPACITY = 79; 
+    const BATTERY_CAPACITY = 85.33; // Updated capacity matching graph specs
     const EFFICIENCY = 0.90;    
+
+    // Curve data points extracted from the EVKX profile image
+    const CHARGING_CURVE = [
+        { soc: 0, kw: 100 },
+        { soc: 5, kw: 110 },
+        { soc: 9, kw: 245 },
+        { soc: 15, kw: 230 },
+        { soc: 20, kw: 210 },
+        { soc: 25, kw: 190 },
+        { soc: 30, kw: 175 },
+        { soc: 40, kw: 125 },
+        { soc: 50, kw: 105 },
+        { soc: 60, kw: 85 },
+        { soc: 70, kw: 65 },
+        { soc: 80, kw: 48 },
+        { soc: 90, kw: 35 },
+        { soc: 95, kw: 20 },
+        { soc: 100, kw: 5 }
+    ];
 
     const currentSocInput = document.getElementById('currentSoc');
     const targetSocInput = document.getElementById('targetSoc');
@@ -263,6 +282,21 @@
 
     const outTime = document.getElementById('outTime');
     const outCost = document.getElementById('outCost');
+
+    function getMaxPowerAtSoc(soc) {
+        if (soc <= CHARGING_CURVE[0].soc) return CHARGING_CURVE[0].kw;
+        if (soc >= CHARGING_CURVE[CHARGING_CURVE.length - 1].soc) return CHARGING_CURVE[CHARGING_CURVE.length - 1].kw;
+        
+        for (let i = 0; i < CHARGING_CURVE.length - 1; i++) {
+            let p1 = CHARGING_CURVE[i];
+            let p2 = CHARGING_CURVE[i+1];
+            if (soc >= p1.soc && soc <= p2.soc) {
+                let ratio = (soc - p1.soc) / (p2.soc - p1.soc);
+                return p1.kw + ratio * (p2.kw - p1.kw);
+            }
+        }
+        return 100;
+    }
 
     function updateLabels() {
         if (costModeSelect.value === 'kwh') {
@@ -299,12 +333,6 @@
             return;
         }
 
-        // Enforce the 250kW cap restriction inside the calculation logic as well
-        if (maxKw > 250) {
-            maxKw = 250;
-            chargeSpeedInput.value = 250;
-        }
-
         if (maxKw <= 0 || rate < 0) {
             showError("Please check your speed and rate metrics.");
             return;
@@ -320,17 +348,17 @@
             let nextSoc = Math.min(currentSoc + stepSoc, endSoc);
             let socForStep = (currentSoc + nextSoc) / 2;
             
-            let curveFactor = 1.0;
-            if (socForStep > 80) {
-                let fractionPast80 = (socForStep - 80) / (100 - 80);
-                curveFactor = 1.0 - (fractionPast80 * 0.85); 
-            }
+            // Look up vehicle maximum limitation from our table
+            let optimalCarKw = getMaxPowerAtSoc(socForStep);
+            
+            // Allowing inputs above 250kW means the math gracefully maps higher values 
+            // but clamps down natively based on whatever parameter is lower at that moment.
+            let effectiveKwToBattery = Math.min(maxKw, optimalCarKw);
 
-            let effectiveKwToBattery = maxKw * curveFactor;
             let kwhNeededForStep = ((nextSoc - currentSoc) / 100) * BATTERY_CAPACITY;
             totalKwhDelivered += kwhNeededForStep;
 
-            let hoursForStep = kwhNeededForStep / (effectiveKwToBattery);
+            let hoursForStep = kwhNeededForStep / effectiveKwToBattery;
             totalMinutes += hoursForStep * 60;
 
             currentSoc = nextSoc;

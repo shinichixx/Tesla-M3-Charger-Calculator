@@ -191,7 +191,7 @@
 <div class="app-container">
     <header>
         <h1>Tesla M3 RWD LR<br><span>Charger Calculator</span></h1>
-        <div class="specs-badge">85.33 kWh • 90% Efficiency • EVKX Curve</div>
+        <div class="specs-badge">79 kWh • 90% Efficiency • Custom Curve</div>
     </header>
 
     <div class="form-group">
@@ -249,26 +249,22 @@
 </div>
 
 <script>
-    const BATTERY_CAPACITY = 85.33; // Updated capacity matching graph specs
+    const BATTERY_CAPACITY = 79; // Reset back to user's specified 79 kWh constraint
     const EFFICIENCY = 0.90;    
 
-    // Curve data points extracted from the EVKX profile image
+    // Refined custom curve mapping constraints based on hardware saturation parameters
     const CHARGING_CURVE = [
-        { soc: 0, kw: 100 },
-        { soc: 5, kw: 110 },
-        { soc: 9, kw: 245 },
-        { soc: 15, kw: 230 },
-        { soc: 20, kw: 210 },
-        { soc: 25, kw: 190 },
-        { soc: 30, kw: 175 },
-        { soc: 40, kw: 125 },
-        { soc: 50, kw: 105 },
-        { soc: 60, kw: 85 },
-        { soc: 70, kw: 65 },
-        { soc: 80, kw: 48 },
-        { soc: 90, kw: 35 },
-        { soc: 95, kw: 20 },
-        { soc: 100, kw: 5 }
+        { soc: 0, kw: 250 }, // Assumed baseline initiation capacity up to peak
+        { soc: 10, kw: 250 },
+        { soc: 20, kw: 250 },
+        { soc: 30, kw: 195 },
+        { soc: 40, kw: 150 },
+        { soc: 50, kw: 120 },
+        { soc: 60, kw: 100 },
+        { soc: 70, kw: 78 },
+        { soc: 80, kw: 56 },
+        { soc: 90, kw: 33 },
+        { soc: 100, kw: 10 }
     ];
 
     const currentSocInput = document.getElementById('currentSoc');
@@ -295,7 +291,7 @@
                 return p1.kw + ratio * (p2.kw - p1.kw);
             }
         }
-        return 100;
+        return 250;
     }
 
     function updateLabels() {
@@ -348,11 +344,10 @@
             let nextSoc = Math.min(currentSoc + stepSoc, endSoc);
             let socForStep = (currentSoc + nextSoc) / 2;
             
-            // Look up vehicle maximum limitation from our table
             let optimalCarKw = getMaxPowerAtSoc(socForStep);
             
-            // Allowing inputs above 250kW means the math gracefully maps higher values 
-            // but clamps down natively based on whatever parameter is lower at that moment.
+            // Core logic limitation constraint check: 
+            // Ensures calculation tracks the lower parameter limit between user charger supply vs battery capability profile.
             let effectiveKwToBattery = Math.min(maxKw, optimalCarKw);
 
             let kwhNeededForStep = ((nextSoc - currentSoc) / 100) * BATTERY_CAPACITY;
